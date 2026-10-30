@@ -1,6 +1,8 @@
 from evdev import InputDevice, UInput, AbsInfo, ecodes
 from select import select
 from buttons import handle_button
+from right_stick import m2j, handle_right_stick
+from left_stick import lsmode, handle_left_stick
 
 keyboard = InputDevice("/dev/input/event9")
 mouse = InputDevice("/dev/input/event12")
@@ -51,15 +53,21 @@ try:
         keyboard.fd: keyboard,
         mouse.fd: mouse,
     }
+    M2J = m2j(50.0)
+    LSMode = lsmode()
+    LSMode.start(keyboard, virt_controller)
     while True:
         ready, _, _ = select(list(devices), [], [])
         for fd in ready:
             device = devices[fd]
             for event in device.read():
+                handle_right_stick(M2J, event, virt_controller)
+                handle_left_stick(LSMode, event, virt_controller, keyboard)
                 handle_button(event, virt_controller)
 except KeyboardInterrupt:
     print("\nExiting...")
 finally:
+    LSMode.stop()
     virt_controller.close()
     keyboard.ungrab()
     keyboard.close()

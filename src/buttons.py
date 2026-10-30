@@ -10,14 +10,16 @@ BUTTON_MAP = {
     ecodes.KEY_J: ecodes.BTN_DPAD_LEFT,
     ecodes.KEY_K: ecodes.BTN_DPAD_DOWN,
     ecodes.KEY_L: ecodes.BTN_DPAD_RIGHT,
-    ecodes.KEY_F: ecodes.BTN_TL,
-    ecodes.KEY_R: ecodes.ABS_Z,
+    ecodes.KEY_LEFTCTRL: ecodes.BTN_TL,
+    ecodes.KEY_LEFTALT: ecodes.ABS_Z,
+    ecodes.KEY_RIGHTCTRL: ecodes.BTN_TL,
+    ecodes.KEY_RIGHTALT: ecodes.ABS_Z,
     ecodes.BTN_SIDE: ecodes.BTN_TR,
     ecodes.BTN_EXTRA: ecodes.ABS_RZ,
     ecodes.KEY_ENTER: ecodes.BTN_START,
     ecodes.BTN_MIDDLE: ecodes.BTN_THUMBR,
     ecodes.KEY_E: ecodes.BTN_THUMBL,
-    ecodes.KEY_LEFTALT: ecodes.BTN_SELECT,
+    ecodes.KEY_F: ecodes.BTN_SELECT,
 }
 
 
