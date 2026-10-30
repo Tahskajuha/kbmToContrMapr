@@ -20,6 +20,8 @@ KEY_ANGLES = {
     ecodes.KEY_D: 0,
 }
 
+ACCEPTED_BUTTON_SET = {ecodes.KEY_W, ecodes.KEY_A, ecodes.KEY_S, ecodes.KEY_D}
+
 
 @dataclass
 class lsmode:
@@ -30,7 +32,10 @@ class lsmode:
     angleDelta: int = 5
     targetAngle: int = None
     currentAngle: int = 270
-    magnitude: int = 0
+    currentMagnitude: int = 0
+    magnitudeDelta: int = 2048
+    targetMagnitude: int = 0
+    movementPhase: int = 1  # 1 -> rotate, 2 -> retract, 3 -> extend
 
     stop_event: threading.Event = field(default_factory=threading.Event, init=False)
     queue_thread: threading.Thread = field(init=False)
@@ -41,9 +46,21 @@ class lsmode:
         self.pressedQueue.clear()
         self.targetAngle = None
         self.currentAngle = 270
-        self.magnitude = 0
+        self.currentMagnitude = 0
+        self.targetMagnitude = 0
+        self.set_mag_phase(1)
         keyboard.set_led(ecodes.LED_CAPSL, int(self.state in (1, 2)))
         keyboard.set_led(ecodes.LED_SCROLLL, int(self.state == 2))
+
+    def cycle_speed(self, increase: bool):
+        self.speed = (
+            {1: 2, 2: 3, 3: 4, 4: 5, 5: 1}[self.speed]
+            if increase
+            else {1: 5, 5: 4, 4: 3, 3: 2, 2: 1}[self.speed]
+        )
+
+    def set_mag_phase(self, newPhase: int):
+        self.movementPhase = newPhase if newPhase in (1, 2, 3) else 1
 
     def start(self, keyboard, gamepad):
         self.queue_thread = threading.Thread(
@@ -54,16 +71,6 @@ class lsmode:
     def stop(self):
         self.stop_event.set()
         self.queue_thread.join()
-
-    def cycle_speed(self, increase: bool):
-        self.speed = (
-            {1: 2, 2: 3, 3: 4, 4: 5, 5: 1}[self.speed]
-            if increase
-            else {1: 5, 5: 4, 4: 3, 3: 2, 2: 1}[self.speed]
-        )
-
-
-ACCEPTED_BUTTON_SET = {ecodes.KEY_W, ecodes.KEY_A, ecodes.KEY_S, ecodes.KEY_D}
 
 
 def set_mode(pressed_set, gamepad):
@@ -112,35 +119,50 @@ def queue_worker(lsmode_obj, keyboard, gamepad):
         if lsmode_obj.state in (1, 2):
             if lsmode_obj.targetAngle is None and lsmode_obj.pressedQueue:
                 lsmode_obj.targetAngle = KEY_ANGLES[lsmode_obj.pressedQueue.popleft()]
-                lsmode_obj.magnitude = 32767 if lsmode_obj.state == 2 else 16383
+                lsmode_obj.targetMagnitude = 32767 if lsmode_obj.state == 2 else 16383
             if lsmode_obj.targetAngle is not None:
-                diff = (
-                    lsmode_obj.targetAngle - lsmode_obj.currentAngle + 180
-                ) % 360 - 180
-                if diff == 0:
-                    if lsmode_obj.pressedQueue:
-                        lsmode_obj.targetAngle = KEY_ANGLES[
-                            lsmode_obj.pressedQueue.popleft()
-                        ]
-                    else:
+                if lsmode_obj.movementPhase == 1:
+                    diff = (
+                        lsmode_obj.targetAngle - lsmode_obj.currentAngle + 180
+                    ) % 360 - 180
+                    if lsmode_obj.currentMagnitude == 0:
+                        lsmode_obj.currentAngle = lsmode_obj.targetAngle
+                        lsmode_obj.set_mag_phase(3)
+                    elif diff == 0:
                         lsmode_obj.targetAngle = None
-                elif abs(diff) <= lsmode_obj.angleDelta:
-                    lsmode_obj.currentAngle = lsmode_obj.targetAngle
-                elif diff > 0:
-                    lsmode_obj.currentAngle += lsmode_obj.angleDelta
-                else:
-                    lsmode_obj.currentAngle -= lsmode_obj.angleDelta
+                    elif abs(diff) == 180:
+                        lsmode_obj.set_mag_phase(2)
+                    elif abs(diff) <= lsmode_obj.angleDelta:
+                        lsmode_obj.currentAngle = lsmode_obj.targetAngle
+                    elif diff > 0:
+                        lsmode_obj.currentAngle += lsmode_obj.angleDelta
+                    else:
+                        lsmode_obj.currentAngle -= lsmode_obj.angleDelta
+                    lsmode_obj.currentAngle %= 360
 
-                lsmode_obj.currentAngle %= 360
+                elif lsmode_obj.movementPhase == 2:
+                    lsmode_obj.currentMagnitude = max(
+                        0, lsmode_obj.currentMagnitude - lsmode_obj.magnitudeDelta
+                    )
+                    if lsmode_obj.currentMagnitude == 0:
+                        lsmode_obj.currentAngle = lsmode_obj.targetAngle
+                        lsmode_obj.set_mag_phase(3)
+                elif lsmode_obj.movementPhase == 3:
+                    lsmode_obj.currentMagnitude = min(
+                        lsmode_obj.targetMagnitude,
+                        lsmode_obj.currentMagnitude + lsmode_obj.magnitudeDelta,
+                    )
+                    if lsmode_obj.currentMagnitude == lsmode_obj.targetMagnitude:
+                        lsmode_obj.set_mag_phase(1)
+
                 x = int(
-                    lsmode_obj.magnitude
+                    lsmode_obj.currentMagnitude
                     * math.cos(math.radians(lsmode_obj.currentAngle))
                 )
                 y = int(
-                    lsmode_obj.magnitude
+                    lsmode_obj.currentMagnitude
                     * math.sin(math.radians(lsmode_obj.currentAngle))
                 )
-
                 gamepad.write(ecodes.EV_ABS, ecodes.ABS_X, x)
                 gamepad.write(ecodes.EV_ABS, ecodes.ABS_Y, y)
                 gamepad.syn()
